@@ -1,0 +1,60 @@
+library(shiny)
+library(dplyr)
+library(readr)
+library(writexl)
+library(DT)
+library(shinythemes)
+
+# Cargar datos
+q1 <- read_csv("C:/Users/a/OneDrive - Grupo Amarey/SISMED2024Q1.txt")
+q2 <- read_csv("C:/Users/a/OneDrive - Grupo Amarey/SISMED2024Q2.txt")
+q6 <- bind_rows(q1, q2)
+
+# Función para generar Excel
+fun <- function(x, exp, nom) {
+  datos <- x %>% filter(ExpedienteSanitario == exp) %>% mutate(Nombre = nom)
+  archivo <- paste0(nom, ".xlsx")
+  write_xlsx(datos, archivo)
+  return(datos)
+}
+
+# UI mejorada
+ui <- fluidPage(
+  theme = shinytheme("flatly"),
+  titlePanel("Generación de archivo Excel - SISMED"),
+  sidebarLayout(
+    sidebarPanel(
+      textInput("expediente", "Número de Expediente Sanitario:"),
+      textInput("nombre", "Nombre del producto:"),
+      actionButton("generar", "Generar Archivo Excel", class = "btn-primary"),
+      br(),
+      textOutput("mensaje")
+    ),
+    mainPanel(
+      h4("Vista previa de datos"),
+      DTOutput("tablaPreview")
+    )
+  )
+)
+
+# Servidor
+server <- function(input, output) {
+  output$tablaPreview <- renderDT({
+    datatable(head(q6, 10), options = list(pageLength = 5))
+  })
+  
+  observeEvent(input$generar, {
+    expediente <- input$expediente
+    nombre <- input$nombre
+    
+    if (expediente != "" && nombre != "") {
+      resultado <- fun(q6, expediente, nombre)
+      output$mensaje <- renderText(paste("Archivo generado con nombre:", nombre, ".xlsx"))
+    } else {
+      output$mensaje <- renderText("Por favor, ingrese el número de expediente y el nombre del producto.")
+    }
+  })
+}
+
+# Ejecutar Shiny
+shinyApp(ui = ui, server = server)
