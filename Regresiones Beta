@@ -1,0 +1,295 @@
+library(betareg)
+library(readr)
+library(dplyr)
+library(readxl)
+library(stringi)
+library(openxlsx)
+library(spatialreg)
+library(spdep)
+library(RColorBrewer)
+library(leaflet)
+library(dplyr)
+library(ggplot2)
+library(tmap)
+library(tmaptools)
+library(lmtest)
+library(splm)
+library(data.table)
+library(sp)
+library(readxl)
+library(ggplot2)
+library(sp)
+library(tidyr)
+library(zoo)
+
+setwd("C:/Users/Pract.NuevoNegocios/OneDrive - Grupo Amarey")
+#hum <- read_csv("C:/Users/a/Downloads/Humedad_del_Aire_2_metros.csv")
+hum <- read_csv("Humedad_del_Aire_2_metros.csv")
+
+hum$Municipio <- tolower(hum$Municipio)
+hum$Municipio <- stri_trans_general(hum$Municipio,"Latin-ASCII")
+
+hum_p <- hum%>%
+  group_by(Municipio)%>%
+  summarise(prom = mean(ValorObservado))%>%
+  as.data.frame()
+
+asma <- read_excel("D:/Pract.NuevoNegocios/Downloads/data (1).xlsx")
+
+asma$Municipio <- tolower(asma$Municipio)
+asma$Municipio <- stri_trans_general(asma$Municipio,"Latin-ASCII")
+
+hum_p$Municipio <- tolower(hum_p$Municipio)
+hum_p$Municipio <- stri_trans_general(hum_p$Municipio,"Latin-ASCII")
+
+data_asma <- merge(asma, hum_p , by.x="Municipio", by.y="Municipio")
+
+data_asma <- data_asma[!duplicated(data_asma$`% poblacion diagnosticada`),]
+cor(data_asma$prom,data_asma$`% poblacion diagnosticada`)
+
+######## epoc
+
+epoc <- read_excel("D:/Pract.NuevoNegocios/Downloads/data (2).xlsx")
+
+epoc$Municipio <- tolower(epoc$Municipio)
+epoc$Municipio <- stri_trans_general(epoc$Municipio,"Latin-ASCII")
+
+data_epoc <- merge(epoc, hum_p , by.x="Municipio", by.y="Municipio")
+cor(data_epoc$prom,data_epoc$`% poblacion diagnosticada`)
+
+
+
+########## regresion beta
+
+attach(data_asma)
+
+reg_beta <- betareg(`% poblacion diagnosticada` ~ prom, link= "logit", data = data_asma)
+summary(reg_beta)
+
+#### Homocedasticidad
+
+plot(fitted(reg_beta), residuals(reg_beta), main = "Residuos vs Valores ajustados",
+     xlab = "Valores ajustados", ylab = "Residuos estandarizados")
+abline(h = 0, col = "red")
+
+plot(fitted(reg_beta), residuals(reg_beta, type = "pearson"), main = "Heterocedasticidad",
+     xlab = "Valores ajustados", ylab = "Residuos de Pearson")
+abline(h = 0, col = "red")
+
+# No autocorrelación de residuos
+
+dwtest(reg_beta)
+
+bptest(reg_beta)
+
+
+qqnorm(residuals(reg_beta, type = "quantile"))
+qqline(residuals(reg_beta, type = "quantile"))
+
+
+##### predicción
+
+nuevo_municipio <- data.frame(prom = 89)
+
+# Hacer la predicción
+
+prediccion <- predict(reg_beta, newdata = nuevo_municipio, type="response")
+prediccion
+
+prediccion <- (exp(-4.181591 -0.008062*89 ))/(1 + exp(-4.181591 -0.008062*89))
+
+
+############## regresión Epoc
+
+attach(data_epoc)
+
+reg_epoc <- betareg(`% poblacion diagnosticada` ~ prom, data = data_epoc)
+summary(reg_epoc)
+
+
+
+
+########### datos temperatura
+
+temp <- read_csv("temperatura.csv")
+
+temp$Municipio <- tolower(temp$Municipio)
+temp$Municipio <- stri_trans_general(temp$Municipio,"Latin-ASCII")
+
+temp_p <- temp%>%
+  group_by(Municipio)%>%
+  summarise(temperatura = mean(ValorObservado))%>%
+  as.data.frame()
+
+temp_p
+
+data_temp <- merge(data_asma, temp_p, by.x="Municipio", by.y="Municipio")
+data_temp
+
+attach(data_temp)
+
+reg_beta1 <- betareg(`% poblacion diagnosticada` ~ prom + temperatura, data= data_temp)
+summary(reg_beta1)
+
+
+
+########## regresion epoc-temp
+
+data_epocT <- merge(data_epoc, temp_p, by.x="Municipio", by.y="Municipio")
+data_epocT
+
+reg_epocT <- betareg(`% poblacion diagnosticada` ~ prom + temperatura, data= data_epocT)
+summary(reg_epocT)
+
+
+
+################# cobertura salud
+
+numero_afiliados <- read_csv("numero afiliados.csv")
+
+afiliados_p <- numero_afiliados%>%
+  group_by(CodMunicipio, Municipio)%>%
+  summarise(num = mean(NumPersonas))%>%
+  as.data.frame()
+
+pob_mun <- read_excel("poblacion.xlsx")
+
+
+afiliados <- merge(pob_mun, afiliados_p, by.x="Municipio", by.y="Municipio")
+afiliados
+
+afiliados$Municipio <- tolower(afiliados$Municipio)
+afiliados$Municipio <- stri_trans_general(afiliados$Municipio,"Latin-ASCII")
+
+afiliados <- afiliados%>%
+  mutate(cobertura = num/Población)%>%
+  as.data.frame()
+
+
+datos_htc <- merge(data_temp, afiliados, by.x="Municipio", by.y="Municipio")
+
+datos_htc <- datos_htc[!duplicated(datos_htc$`% poblacion diagnosticada`),]
+
+datos_htc
+
+attach(datos_htc)
+
+reg_htc <- betareg(`% poblacion diagnosticada` ~ prom + temperatura + cobertura, data = datos_htc)
+summary(reg_htc)
+
+
+####### datos edad
+
+
+
+edad <- read_excel("C:/Users/Pract.NuevoNegocios/OneDrive - Grupo Amarey/grupos de edad.xlsx")
+edad_p <- edad%>%
+  group_by(MUNICIPIO, Grupo)%>%
+  summarise(prom = sum(Número))%>%
+  as.data.frame()
+
+edad_p
+
+
+df_result <- edad_p%>%
+  pivot_wider(names_from = Grupo, values_from = prom)%>%
+  mutate(ratio = A / Total)%>%
+  select(MUNICIPIO, ratio)%>%
+  as.data.frame()
+
+##df_result <- df_result%>%
+#mutate(MUNICIPIO = gsub("^[0-9]+_", "", MUNICIPIO))%>%
+#as.data.frame()
+
+df_result <- df_result%>%
+  mutate(MUNICIPIO = tolower(iconv(MUNICIPIO, from = "UTF-8", to = "ASCII//TRANSLIT")))%>%
+  as.data.frame()
+
+df_result
+
+df_result$dep <- as.numeric(substr(df_result$MUNICIPIO, 1, 2)) 
+
+datos <- df_result%>%
+  mutate(MUNICIPIO = gsub("^[0-9]+_", "", MUNICIPIO))%>%
+  as.data.frame()
+
+datos_EC <- df_result%>%
+  filter(dep == 17| dep == 63 | dep== 66)%>%
+  as.data.frame
+
+
+media <- mean(df_result$ratio)
+
+datos_EC$ratio > media
+
+eje_cafetero <- datos_EC%>%
+  mutate(MUNICIPIO = gsub("^[0-9]+_", "", MUNICIPIO))%>%
+  as.data.frame()
+
+data_asma <- merge(datos, datos_htc, by.x="MUNICIPIO", by.y="Municipio")
+
+data_asma <- data_asma[!duplicated(data_asma$`% poblacion diagnosticada`),]
+
+reg_beta_asma <- betareg(data_asma$`% poblacion diagnosticada` ~ data_asma$ratio + data_asma$cobertura + data_asma$prom + data_asma$temperatura)
+summary(reg_beta_asma)
+
+attach(data_asma)
+
+reg_beta_asma <- betareg(data_asma$`% poblacion diagnosticada` ~ data_asma$cobertura + data_asma$prom + data_asma$temperatura)
+summary(reg_beta_asma)
+
+
+############# epoc
+
+datos_htc_epoc <- merge(data_epocT, afiliados, by.x="Municipio", by.y="Municipio")
+attach(datos_htc_epoc)
+
+data_epoc <- merge(datos, data_epocT, by.x="MUNICIPIO", by.y="Municipio")
+
+data_epoc <- data_epoc[!duplicated(data_epoc$`% poblacion diagnosticada`),]
+
+
+data_epoc <- merge(data_epoc, afiliados, by.x="MUNICIPIO", by.y="Municipio")
+
+data_epoc <- data_epoc[!duplicated(data_epoc$`% poblacion diagnosticada`),]
+
+reg_beta_epoc <- betareg(data_epoc$`% poblacion diagnosticada` ~ data_epoc$prom + data_epoc$temperatura + data_epoc$cobertura + data_epoc$ratio)
+summary(reg_beta_epoc)
+
+reg_a <- lm(`% poblacion diagnosticada` ~ prom + temperatura + cobertura + ratio, data = data_asma)
+reg_e <- lm(`% poblacion diagnosticada` ~ prom + temperatura + cobertura + ratio, data = data_epoc)
+
+AIC(reg_a)
+BIC(reg_a)
+
+AIC(reg_beta_asma)
+BIC(reg_beta_asma)
+
+AIC(reg_beta_epoc)
+BIC(reg_beta_epoc)
+######################
+
+plot(reg_beta_asma, which = 1:4, type = "pearson") ###### dato 55
+
+data_asma1 <- data_asma[-c(14,51,57,134),]
+
+reg_beta_asma1 <- betareg(data_asma1$`% poblacion diagnosticada` ~ data_asma1$cobertura + data_asma1$prom + data_asma1$temperatura)
+
+plot(x=reg_beta_asma1$fitted.values, y = reg_beta_asma1$residuals, main="Residuales Vs Valores ajustados", xlab="Residuales", ylab="Valores ajustados", col=2)
+abline(h=0, col=5, lwd=2)
+
+plot(x=reg_beta_epoc$residuals, y = reg_beta_epoc$fitted.values, main="Residuales Vs Valores ajustados", xlab="Residuales", ylab="Valores ajustados", col=2)
+
+
+
+plot(reg_beta_asma1, which = 1:4, type = "pearson")
+
+a <- cooks.distance(reg_beta_asma)
+
+which(a > 0.2)
+
+data_epoc1 <- data_epoc[-c(16,51),]
+
+reg_beta_epoc1 <- betareg(data_epoc1$`% poblacion diagnosticada` ~ data_epoc1$cobertura + data_epoc1$prom + data_epoc1$temperatura + data_epoc1$ratio)
+
+summary(reg_beta_epoc1)
