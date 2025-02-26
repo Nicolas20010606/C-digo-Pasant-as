@@ -1,0 +1,72 @@
+extract_presentacion <- function(text) { 
+  text <- tolower(text)
+  text <- iconv(text, from = "UTF-8", to = "ASCII//TRANSLIT") 
+  patron <- paste0(
+    "(?i)(presentacion del producto|tipo de empaque|",
+    "presentacion comercial del producto final|presentacion|",
+    "frasco por|presentacin comercial|presentancion|componentes|",
+    "presentaciones comerciales|pres.cial|cantidad a importar):?\\s*(.*?)([\\.,;]|$)"
+  )
+  info <- str_extract_all(text, patron)
+  return(info) 
+} 
+
+
+asignar_unidades <- function(descripciones) {
+  lista <- extract_presentacion(descripciones)
+  descripciones_unicas <- unique(lista)
+  
+  unidades <- numeric(length(lista))
+  unidades_unicas <- numeric(length(descripciones_unicas))
+  
+  for (i in seq_along(descripciones_unicas)) {
+    descripcion_actual <- descripciones_unicas[i]
+    
+    if (is.na(descripcion_actual)) {
+      unidades_unicas[i] <- 1
+    } else {
+      print(paste("Descripción:", descripcion_actual))
+      unidad <- as.numeric(readline(prompt = "Ingrese la cantidad de unidades: "))
+      
+      if (is.na(unidad) || unidad < 0) {
+        unidades_unicas[i] <- NA
+      } else {
+        unidades_unicas[i] <- unidad
+      }
+      
+      if (unidad == 0) {
+        break
+      }
+    }
+  }
+  
+  for (i in seq_along(lista)) {
+    descripcion <- lista[i]
+    if (is.na(descripcion)) {
+      unidades[i] <- 1
+    } else {
+      indice_unico <- match(descripcion, descripciones_unicas)
+      if (!is.na(indice_unico)) {
+        unidades[i] <- unidades_unicas[indice_unico]
+      } else {
+        unidades[i] <- NA
+      }
+    }
+  }
+  
+  return(unidades)
+}
+
+revisar <- function(datos) {
+  posiciones_na <- c()  # Inicializa un vector vacío para las posiciones con NA
+  presentaciones <- extract_presentacion(datos)  # Extrae las presentaciones
+  
+  # Itera usando los índices de presentaciones
+  for(i in seq_along(presentaciones)) {
+    if(is.na(presentaciones[i])) {  # Verifica si la presentación es NA
+      posiciones_na <- c(posiciones_na, i)  # Guarda la posición en posiciones_na
+    }
+  }
+  
+  return(posiciones_na)  # Devuelve las posiciones donde las presentaciones son NA
+}
